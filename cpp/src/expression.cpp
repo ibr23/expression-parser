@@ -73,15 +73,20 @@ std::any MakeTypeMatch(const std::any &leftVal, const std::any &rightVal) {
 }
 
 bool AnyEquals(const std::any &a, const std::any &b) {
-    // First, if the types don't match, we consider them unequal.
+    // Numeric types compare by value regardless of whether they're stored
+    // as int or double (MakeTypeMatch always coerces the right-hand side
+    // of a comparison to double, so a stricter type check here would make
+    // e.g. an int context variable never equal a numeric literal).
+    bool aNumeric = (a.type() == typeid(int) || a.type() == typeid(double));
+    bool bNumeric = (b.type() == typeid(int) || b.type() == typeid(double));
+    if (aNumeric && bNumeric)
+        return MakeNumeric(a) == MakeNumeric(b);
+
+    // Otherwise, if the types don't match, we consider them unequal.
     if (a.type() != b.type())
         return false;
 
-    if (a.type() == typeid(int))
-        return std::any_cast<int>(a) == std::any_cast<int>(b);
-    else if (a.type() == typeid(double))
-        return std::any_cast<double>(a) == std::any_cast<double>(b);
-    else if (a.type() == typeid(bool))
+    if (a.type() == typeid(bool))
         return std::any_cast<bool>(a) == std::any_cast<bool>(b);
     else if (a.type() == typeid(std::string))
         return std::any_cast<std::string>(a) == std::any_cast<std::string>(b);
@@ -298,6 +303,52 @@ OpLessThanEquals::OpLessThanEquals(std::shared_ptr<ExpressionNode> left, std::sh
 
 std::any OpLessThanEquals::DoEval(const std::any &leftVal, const std::any &rightVal) const {
     return Utils::MakeNumeric(leftVal) <= Utils::MakeNumeric(rightVal);
+}
+
+// ---------------------
+// OpTernary implementation
+// ---------------------
+OpTernary::OpTernary(std::shared_ptr<ExpressionNode> condition, std::shared_ptr<ExpressionNode> trueExpr,
+                      std::shared_ptr<ExpressionNode> falseExpr)
+    : ExpressionNode("Ternary", 30), Condition(condition), TrueExpr(trueExpr), FalseExpr(falseExpr) {
+        this->_specificity = condition->GetSpecificity() + trueExpr->GetSpecificity() + falseExpr->GetSpecificity();
+    }
+
+std::any OpTernary::Evaluate(const Context &context, std::vector<std::string>* dumpEval) const {
+    std::any condVal = Condition->Evaluate(context, dumpEval);
+    bool cond = Utils::MakeBool(condVal);
+    std::any result = cond
+        ? TrueExpr->Evaluate(context, dumpEval)
+        : FalseExpr->Evaluate(context, dumpEval);
+
+    if (dumpEval) {
+        dumpEval->push_back("Evaluated: " + Utils::FormatValue(condVal) + " ? " + (cond ? "..." : "(skipped)") +
+                              " : " + (cond ? "(skipped)" : "...") + " = " + Utils::FormatValue(result));
+    }
+    return result;
+}
+
+std::string OpTernary::DumpStructure(int indent) const {
+    std::string indentStr(indent * 2, ' ');
+    return indentStr + "Ternary\n" +
+           Condition->DumpStructure(indent + 1) +
+           TrueExpr->DumpStructure(indent + 1) +
+           FalseExpr->DumpStructure(indent + 1);
+}
+
+std::string OpTernary::Write() const {
+    std::string condStr = Condition->Write();
+    std::string trueStr = TrueExpr->Write();
+    std::string falseStr = FalseExpr->Write();
+
+    if (Condition->Precedence < this->Precedence)
+        condStr = "(" + condStr + ")";
+    if (TrueExpr->Precedence < this->Precedence)
+        trueStr = "(" + trueStr + ")";
+    if (FalseExpr->Precedence < this->Precedence)
+        falseStr = "(" + falseStr + ")";
+
+    return condStr + " ? " + trueStr + " : " + falseStr;
 }
 
 // ---------------------

@@ -8,7 +8,9 @@ using ExpressionParser;
 public class WriterTest
 {
     private string loadTestFile(string fileName) {
-        return File.ReadAllText("../../../../../tests/"+fileName);
+        // Normalize line endings: the golden files may be checked out with
+        // CRLF (e.g. on Windows), but processedLines is always joined with "\n".
+        return File.ReadAllText("../../../../../tests/"+fileName).Replace("\r\n", "\n");
     }
 
     [Fact]

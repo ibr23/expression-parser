@@ -164,6 +164,24 @@ protected:
 };
 
 // ---------------------
+// Ternary Conditional Operator
+// ---------------------
+// condition ? trueExpr : falseExpr
+class OpTernary : public ExpressionNode {
+protected:
+    std::shared_ptr<ExpressionNode> Condition;
+    std::shared_ptr<ExpressionNode> TrueExpr;
+    std::shared_ptr<ExpressionNode> FalseExpr;
+public:
+    OpTernary(std::shared_ptr<ExpressionNode> condition, std::shared_ptr<ExpressionNode> trueExpr,
+              std::shared_ptr<ExpressionNode> falseExpr);
+
+    virtual std::any Evaluate(const Context &context, std::vector<std::string>* dumpEval = nullptr) const override;
+    virtual std::string DumpStructure(int indent = 0) const override;
+    virtual std::string Write() const override;
+};
+
+// ---------------------
 // Unary Operators
 // ---------------------
 class UnaryOp : public ExpressionNode {

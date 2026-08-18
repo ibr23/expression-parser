@@ -31,6 +31,20 @@ TEST_CASE( "SimpleWriter") {
     Writer::setStringFormat(STRING_FORMAT::SINGLEQUOTE);
 }
 
+TEST_CASE( "TernaryWriter") {
+    Parser parser;
+
+    auto expression = parser.Parse("true ? 1 : 2");
+    REQUIRE(expression->Write() == "true ? 1 : 2");
+
+    expression = parser.Parse("age>=18?'adult':'minor'");
+    REQUIRE(expression->Write() == "age >= 18 ? 'adult' : 'minor'");
+
+    // Right-associative chaining round-trips without extra parens.
+    expression = parser.Parse("x == 1 ? 'one' : x == 2 ? 'two' : 'other'");
+    REQUIRE(expression->Write() == "x == 1 ? 'one' : x == 2 ? 'two' : 'other'");
+}
+
 TEST_CASE( "MatchOutputWriter") {
     std::string source = loadTestFile("Writer.txt");
 

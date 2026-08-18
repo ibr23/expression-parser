@@ -8,7 +8,9 @@ using ExpressionParser;
 public class ParserTest
 {
     private string loadTestFile(string fileName) {
-        return File.ReadAllText("../../../../../tests/"+fileName);
+        // Normalize line endings: the golden files may be checked out with
+        // CRLF (e.g. on Windows), but processedLines is always joined with "\n".
+        return File.ReadAllText("../../../../../tests/"+fileName).Replace("\r\n", "\n");
     }
 
     [Fact]
@@ -38,6 +40,34 @@ public class ParserTest
         Assert.Equal(3, expression.Specificity);
         expression = parser.Parse("true");
         Assert.Equal(0, expression.Specificity);
+    }
+
+    [Fact]
+    public void NumericEquals()
+    {
+        var parser = new Parser();
+
+        // An int-typed context variable must compare equal to a numeric literal
+        // (numeric literals always parse as double, so this exercises int vs.
+        // double equality, not just double vs. double).
+        var context = new Dictionary<string, object>
+        {
+            { "counter", 2 }
+        };
+
+        var expression = parser.Parse("counter == 2");
+        Assert.Equal(true, expression.Evaluate(context));
+
+        expression = parser.Parse("counter != 3");
+        Assert.Equal(true, expression.Evaluate(context));
+
+        expression = parser.Parse("counter == 3");
+        Assert.Equal(false, expression.Evaluate(context));
+
+        // double-typed context variable, for symmetry.
+        context["ratio"] = 0.5;
+        expression = parser.Parse("ratio == 0.5");
+        Assert.Equal(true, expression.Evaluate(context));
     }
 
     [Fact]

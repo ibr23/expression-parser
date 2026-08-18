@@ -23,6 +23,7 @@ namespace ExpressionParser
         private static readonly Regex TOKEN_REGEX = new Regex(@"
             \s*(
                 >=|<=|==|=|!=|>|<|\(|\)|,|and|&&|or|\|\||not|!      # Operators & keywords
+                | \?|:                                             # Ternary conditional operator
                 | \+|\-|\/|\*                                      # Maths operators
                 | [A-Za-z_][A-Za-z0-9_]*                           # Identifiers (Variables & Functions)
                 | -?\d+\.\d+(?![A-Za-z_])                          # Floating-point numbers (supports negative)
@@ -43,7 +44,7 @@ namespace ExpressionParser
         {
             _tokens = Tokenize(expression);
             _pos = 0;
-            ExpressionNode node = ParseOr();
+            ExpressionNode node = ParseTernary();
 
             if (_pos < _tokens.Count)
                 throw new SyntaxErrorException($"Unexpected token '{_tokens[_pos]}' at position {_pos}");
@@ -72,6 +73,22 @@ namespace ExpressionParser
             }
 
             return tokens;
+        }
+
+        // Ternary conditional: condition ? trueExpr : falseExpr
+        // Binds looser than 'or' and is right-associative, so chained
+        // ternaries (a ? b : c ? d : e) parse as a ? b : (c ? d : e).
+        private ExpressionNode ParseTernary()
+        {
+            ExpressionNode condition = ParseOr();
+            if (_Match("?"))
+            {
+                ExpressionNode trueExpr = ParseTernary();
+                _Consume(":");
+                ExpressionNode falseExpr = ParseTernary();
+                return new OpTernary(condition, trueExpr, falseExpr);
+            }
+            return condition;
         }
 
         private ExpressionNode ParseOr()
@@ -176,7 +193,7 @@ namespace ExpressionParser
         {
             if (_Match("("))
             {
-                ExpressionNode node = ParseOr();
+                ExpressionNode node = ParseTernary();
                 _Consume(")");
                 return node;
             }
@@ -206,10 +223,10 @@ namespace ExpressionParser
                     List<ExpressionNode> args = new List<ExpressionNode>();
                     if (!_Match(")"))
                     {
-                        args.Add(ParseOr());
+                        args.Add(ParseTernary());
                         while (_Match(","))
                         {
-                            args.Add(ParseOr());
+                            args.Add(ParseTernary());
                         }
                         _Consume(")");
                     }

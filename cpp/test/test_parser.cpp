@@ -49,6 +49,75 @@ TEST_CASE( "StaticStr") {
     REQUIRE(std::any_cast<bool>(result) == true);
 }
 
+TEST_CASE( "NumericEquals") {
+    Parser parser;
+    Context context;
+
+    // An int-typed context variable must compare equal to a numeric literal
+    // (numeric literals always parse as double, so this exercises int vs.
+    // double equality, not just double vs. double).
+    context["counter"] = 2;
+    auto expression = parser.Parse("counter == 2");
+    REQUIRE(std::any_cast<bool>(expression->Evaluate(context)) == true);
+
+    expression = parser.Parse("counter != 3");
+    REQUIRE(std::any_cast<bool>(expression->Evaluate(context)) == true);
+
+    expression = parser.Parse("counter == 3");
+    REQUIRE(std::any_cast<bool>(expression->Evaluate(context)) == false);
+
+    // double-typed context variable, for symmetry.
+    context["ratio"] = 0.5;
+    expression = parser.Parse("ratio == 0.5");
+    REQUIRE(std::any_cast<bool>(expression->Evaluate(context)) == true);
+}
+
+TEST_CASE( "Ternary") {
+    Parser parser;
+    Context context;
+
+    // True branch
+    auto expression = parser.Parse("true ? 1 : 2");
+    REQUIRE(std::any_cast<double>(expression->Evaluate(context)) == 1);
+
+    // False branch
+    expression = parser.Parse("false ? 1 : 2");
+    REQUIRE(std::any_cast<double>(expression->Evaluate(context)) == 2);
+
+    // Condition from a variable comparison
+    context["age"] = 20;
+    expression = parser.Parse("age >= 18 ? 'adult' : 'minor'");
+    REQUIRE(std::any_cast<std::string>(expression->Evaluate(context)) == "adult");
+    context["age"] = 10;
+    REQUIRE(std::any_cast<std::string>(expression->Evaluate(context)) == "minor");
+
+    // Right-associative chaining: a ? b : (c ? d : e)
+    context["x"] = 2;
+    expression = parser.Parse("x == 1 ? 'one' : x == 2 ? 'two' : 'other'");
+    REQUIRE(std::any_cast<std::string>(expression->Evaluate(context)) == "two");
+    context["x"] = 3;
+    REQUIRE(std::any_cast<std::string>(expression->Evaluate(context)) == "other");
+
+    // Binds looser than 'or': parses as (true or false) ? 1 : 2
+    expression = parser.Parse("true or false ? 1 : 2");
+    REQUIRE(std::any_cast<double>(expression->Evaluate(context)) == 1);
+
+    // Only the taken branch is evaluated.
+    context["counter"] = 1.0;
+    expression = parser.Parse("true ? counter : missing_var");
+    REQUIRE(std::any_cast<double>(expression->Evaluate(context)) == 1);
+    expression = parser.Parse("false ? missing_var : counter");
+    REQUIRE(std::any_cast<double>(expression->Evaluate(context)) == 1);
+
+    // Structure dump.
+    expression = parser.Parse("true ? 1 : 2");
+    REQUIRE(expression->DumpStructure() ==
+        "Ternary\n"
+        "  Boolean(true)\n"
+        "  Number(1)\n"
+        "  Number(2)\n");
+}
+
 TEST_CASE( "MatchOutput") {
     std::string source = loadTestFile("Parse.txt");
 

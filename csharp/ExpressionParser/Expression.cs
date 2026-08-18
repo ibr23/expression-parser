@@ -66,6 +66,21 @@ namespace ExpressionParser
             throw new Exception($"Type mismatch: unrecognised type for '{leftVal}'");
         }
 
+        // Numeric types compare by value regardless of whether they're boxed
+        // as int or double (MakeTypeMatch always coerces the right-hand side
+        // of a comparison to double, so object.Equals's strict boxed-type
+        // check would make e.g. an int context variable never equal a
+        // numeric literal).
+        public static bool ObjectEquals(object a, object b)
+        {
+            bool aNumeric = (a is int || a is double);
+            bool bNumeric = (b is int || b is double);
+            if (aNumeric && bNumeric)
+                return MakeNumeric(a) == MakeNumeric(b);
+
+            return a.Equals(b);
+        }
+
         public static string FormatBoolean(bool val) => val ? "true" : "false";
 
         public static string FormatNumeric(double num)
@@ -244,7 +259,7 @@ namespace ExpressionParser
         protected override object DoEval(object leftVal, object rightVal)
         {
             rightVal = Utils.MakeTypeMatch(leftVal, rightVal);
-            return leftVal.Equals(rightVal);
+            return Utils.ObjectEquals(leftVal, rightVal);
         }
     }
 
@@ -256,7 +271,7 @@ namespace ExpressionParser
         protected override object DoEval(object leftVal, object rightVal)
         {
             rightVal = Utils.MakeTypeMatch(leftVal, rightVal);
-            return !leftVal.Equals(rightVal);
+            return !Utils.ObjectEquals(leftVal, rightVal);
         }
     }
 
@@ -354,6 +369,63 @@ namespace ExpressionParser
         protected override object DoEval(object leftVal, object rightVal)
         {
             return Utils.MakeNumeric(leftVal) <= Utils.MakeNumeric(rightVal);
+        }
+    }
+
+    // Ternary conditional operator: condition ? trueExpr : falseExpr
+    public class OpTernary : ExpressionNode
+    {
+        private ExpressionNode _condition;
+        private ExpressionNode _trueExpr;
+        private ExpressionNode _falseExpr;
+
+        public OpTernary(ExpressionNode condition, ExpressionNode trueExpr, ExpressionNode falseExpr)
+            : base("Ternary", 30)
+        {
+            _condition = condition;
+            _trueExpr = trueExpr;
+            _falseExpr = falseExpr;
+            _specificity = condition.Specificity + trueExpr.Specificity + falseExpr.Specificity;
+        }
+
+        public override object Evaluate(Dictionary<string, object> context, List<string>? dumpEval = null)
+        {
+            object condVal = _condition.Evaluate(context, dumpEval);
+            bool cond = Utils.MakeBool(condVal);
+            object result = cond
+                ? _trueExpr.Evaluate(context, dumpEval)
+                : _falseExpr.Evaluate(context, dumpEval);
+
+            if (dumpEval != null)
+            {
+                dumpEval.Add($"Evaluated: {Utils.FormatValue(condVal)} ? {(cond ? "..." : "(skipped)")} : {(cond ? "(skipped)" : "...")} = {Utils.FormatValue(result)}");
+            }
+            return result;
+        }
+
+        public override string DumpStructure(int indent = 0)
+        {
+            string indentStr = new string(' ', indent * 2);
+            return indentStr + "Ternary\n" +
+                   _condition.DumpStructure(indent + 1) +
+                   _trueExpr.DumpStructure(indent + 1) +
+                   _falseExpr.DumpStructure(indent + 1);
+        }
+
+        public override string Write()
+        {
+            string condStr = _condition.Write();
+            string trueStr = _trueExpr.Write();
+            string falseStr = _falseExpr.Write();
+
+            if (_condition.Precedence < this.Precedence)
+                condStr = "(" + condStr + ")";
+            if (_trueExpr.Precedence < this.Precedence)
+                trueStr = "(" + trueStr + ")";
+            if (_falseExpr.Precedence < this.Precedence)
+                falseStr = "(" + falseStr + ")";
+
+            return $"{condStr} ? {trueStr} : {falseStr}";
         }
     }
 

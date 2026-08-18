@@ -12,14 +12,14 @@
 namespace ExpressionParser {
 
     // Define the static TOKEN_REGEX.
-    const std::regex Parser::TOKEN_REGEX = std::regex(R"(\s*(>=|<=|==|=|!=|>|<|\(|\)|,|and|&&|or|\|\||not|!|\+|\-|\/|\*|[A-Za-z_][A-Za-z0-9_]*|-?\d+\.\d+(?![A-Za-z_])|-?\d+(?![A-Za-z_])|"[^"]*"|'[^']*'|true|false|True|False)\s*)", std::regex::ECMAScript);
+    const std::regex Parser::TOKEN_REGEX = std::regex(R"(\s*(>=|<=|==|=|!=|>|<|\(|\)|,|and|&&|or|\|\||not|!|\?|:|\+|\-|\/|\*|[A-Za-z_][A-Za-z0-9_]*|-?\d+\.\d+(?![A-Za-z_])|-?\d+(?![A-Za-z_])|"[^"]*"|'[^']*'|true|false|True|False)\s*)", std::regex::ECMAScript);
 
     Parser::Parser() : _pos(0) { }
 
     std::shared_ptr<ExpressionNode> Parser::Parse(const std::string &expression) {
         _tokens = Tokenize(expression);
         _pos = 0;
-        std::shared_ptr<ExpressionNode> node = ParseOr();
+        std::shared_ptr<ExpressionNode> node = ParseTernary();
         if (_pos < static_cast<int>(_tokens.size()))
             throw std::runtime_error("Unexpected token '" + _tokens[_pos] +
                                      "' at position " + std::to_string(_pos));
@@ -47,6 +47,20 @@ namespace ExpressionParser {
             pos += static_cast<int>(match.position() + match.length());
         }
         return tokens;
+    }
+
+    // Ternary conditional: condition ? trueExpr : falseExpr
+    // Binds looser than 'or' and is right-associative, so chained
+    // ternaries (a ? b : c ? d : e) parse as a ? b : (c ? d : e).
+    std::shared_ptr<ExpressionNode> Parser::ParseTernary() {
+        std::shared_ptr<ExpressionNode> condition = ParseOr();
+        if (_Match("?")) {
+            std::shared_ptr<ExpressionNode> trueExpr = ParseTernary();
+            _Consume(":");
+            std::shared_ptr<ExpressionNode> falseExpr = ParseTernary();
+            return std::make_shared<OpTernary>(condition, trueExpr, falseExpr);
+        }
+        return condition;
     }
 
     std::shared_ptr<ExpressionNode> Parser::ParseOr() {
@@ -129,7 +143,7 @@ namespace ExpressionParser {
 
     std::shared_ptr<ExpressionNode> Parser::ParseTerm() {
         if (_Match("(")) {
-            std::shared_ptr<ExpressionNode> node = ParseOr();
+            std::shared_ptr<ExpressionNode> node = ParseTernary();
             _Consume(")");
             return node;
         }
@@ -150,9 +164,9 @@ namespace ExpressionParser {
             if (_Match("(")) {
                 std::vector<std::shared_ptr<ExpressionNode>> args;
                 if (!_Match(")")) {
-                    args.push_back(ParseOr());
+                    args.push_back(ParseTernary());
                     while (_Match(","))
-                        args.push_back(ParseOr());
+                        args.push_back(ParseTernary());
                     _Consume(")");
                 }
                 return std::make_shared<FunctionCall>(identifier, args);
