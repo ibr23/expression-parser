@@ -24,6 +24,7 @@ namespace ExpressionParser
             \s*(
                 >=|<=|==|=|!=|>|<|\(|\)|,|and|&&|or|\|\||not|!      # Operators & keywords
                 | \?|:                                             # Ternary conditional operator
+                | \.\.                                             # String concatenation operator
                 | \+|\-|\/|\*                                      # Maths operators
                 | [A-Za-z_][A-Za-z0-9_]*                           # Identifiers (Variables & Functions)
                 | -?\d+\.\d+(?![A-Za-z_])                          # Floating-point numbers (supports negative)
@@ -111,6 +112,19 @@ namespace ExpressionParser
             return node;
         }
 
+        // String concatenation: left .. right. Sits between comparisons and
+        // math add/sub, so "a > b .. c" parses "b .. c" as one side of the
+        // comparison, and "1 + 2 .. 3" concatenates the sum with "3".
+        private ExpressionNode ParseConcat()
+        {
+            ExpressionNode node = ParseMathAddSub();
+            while (_Match(".."))
+            {
+                node = new OpConcat(node, ParseMathAddSub());
+            }
+            return node;
+        }
+
         private ExpressionNode ParseMathAddSub()
         {
             ExpressionNode node = ParseMathMulDiv();
@@ -141,22 +155,22 @@ namespace ExpressionParser
 
         private ExpressionNode ParseBinaryOp()
         {
-            ExpressionNode node = ParseMathAddSub();
+            ExpressionNode node = ParseConcat();
             while (_Match("==", "!=", ">", "<", ">=", "<=", "="))
             {
                 string? op = _Previous();
                 if (op == "=" || op == "==")
-                    node = new OpEquals(node, ParseMathAddSub());
+                    node = new OpEquals(node, ParseConcat());
                 else if (op == "!=")
-                    node = new OpNotEquals(node, ParseMathAddSub());
+                    node = new OpNotEquals(node, ParseConcat());
                 else if (op == ">")
-                    node = new OpGreaterThan(node, ParseMathAddSub());
+                    node = new OpGreaterThan(node, ParseConcat());
                 else if (op == "<")
-                    node = new OpLessThan(node, ParseMathAddSub());
+                    node = new OpLessThan(node, ParseConcat());
                 else if (op == ">=")
-                    node = new OpGreaterThanEquals(node, ParseMathAddSub());
+                    node = new OpGreaterThanEquals(node, ParseConcat());
                 else if (op == "<=")
-                    node = new OpLessThanEquals(node, ParseMathAddSub());
+                    node = new OpLessThanEquals(node, ParseConcat());
             }
             return node;
         }

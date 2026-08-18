@@ -43,6 +43,36 @@ public class ParserTest
     }
 
     [Fact]
+    public void Concat()
+    {
+        var parser = new Parser();
+        var context = new Dictionary<string, object>();
+
+        // Basic string concatenation.
+        var expression = parser.Parse("'foo' .. 'bar'");
+        Assert.Equal("foobar", expression.Evaluate(context));
+
+        // Non-string operands are coerced to string, not added numerically.
+        expression = parser.Parse("'count: ' .. 5");
+        Assert.Equal("count: 5", expression.Evaluate(context));
+
+        expression = parser.Parse("5 .. 6");
+        Assert.Equal("56", expression.Evaluate(context));
+
+        // Left-associative chaining: (a .. b) .. c
+        expression = parser.Parse("'a' .. 'b' .. 'c'");
+        Assert.Equal("abc", expression.Evaluate(context));
+
+        // Binds tighter than comparisons but looser than +/-.
+        context["name"] = "fred";
+        expression = parser.Parse("'hi ' .. name == 'hi fred'");
+        Assert.Equal(true, expression.Evaluate(context));
+
+        expression = parser.Parse("'total: ' .. 1 + 2");
+        Assert.Equal("total: 3", expression.Evaluate(context));
+    }
+
+    [Fact]
     public void NumericEquals()
     {
         var parser = new Parser();

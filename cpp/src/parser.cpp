@@ -12,7 +12,7 @@
 namespace ExpressionParser {
 
     // Define the static TOKEN_REGEX.
-    const std::regex Parser::TOKEN_REGEX = std::regex(R"(\s*(>=|<=|==|=|!=|>|<|\(|\)|,|and|&&|or|\|\||not|!|\?|:|\+|\-|\/|\*|[A-Za-z_][A-Za-z0-9_]*|-?\d+\.\d+(?![A-Za-z_])|-?\d+(?![A-Za-z_])|"[^"]*"|'[^']*'|true|false|True|False)\s*)", std::regex::ECMAScript);
+    const std::regex Parser::TOKEN_REGEX = std::regex(R"(\s*(>=|<=|==|=|!=|>|<|\(|\)|,|and|&&|or|\|\||not|!|\?|:|\.\.|\+|\-|\/|\*|[A-Za-z_][A-Za-z0-9_]*|-?\d+\.\d+(?![A-Za-z_])|-?\d+(?![A-Za-z_])|"[^"]*"|'[^']*'|true|false|True|False)\s*)", std::regex::ECMAScript);
 
     Parser::Parser() : _pos(0) { }
 
@@ -79,6 +79,17 @@ namespace ExpressionParser {
         return node;
     }
 
+    // String concatenation: left .. right. Sits between comparisons and
+    // math add/sub, so "a > b .. c" parses "b .. c" as one side of the
+    // comparison, and "1 + 2 .. 3" concatenates the sum with "3".
+    std::shared_ptr<ExpressionNode> Parser::ParseConcat() {
+        std::shared_ptr<ExpressionNode> node = ParseMathAddSub();
+        while (_Match("..")) {
+            node = std::make_shared<OpConcat>(node, ParseMathAddSub());
+        }
+        return node;
+    }
+
     std::shared_ptr<ExpressionNode> Parser::ParseMathAddSub() {
         std::shared_ptr<ExpressionNode> node = ParseMathMulDiv();
         while (_Match({"+", "-"})) {
@@ -104,21 +115,21 @@ namespace ExpressionParser {
     }
 
     std::shared_ptr<ExpressionNode> Parser::ParseBinaryOp() {
-        std::shared_ptr<ExpressionNode> node = ParseMathAddSub();
+        std::shared_ptr<ExpressionNode> node = ParseConcat();
         while (_Match({"==", "!=", ">", "<", ">=", "<=", "="})) {
             std::string op = _Previous();
             if (op == "=" || op == "==")
-                node = std::make_shared<OpEquals>(node, ParseMathAddSub());
+                node = std::make_shared<OpEquals>(node, ParseConcat());
             else if (op == "!=")
-                node = std::make_shared<OpNotEquals>(node, ParseMathAddSub());
+                node = std::make_shared<OpNotEquals>(node, ParseConcat());
             else if (op == ">")
-                node = std::make_shared<OpGreaterThan>(node, ParseMathAddSub());
+                node = std::make_shared<OpGreaterThan>(node, ParseConcat());
             else if (op == "<")
-                node = std::make_shared<OpLessThan>(node, ParseMathAddSub());
+                node = std::make_shared<OpLessThan>(node, ParseConcat());
             else if (op == ">=")
-                node = std::make_shared<OpGreaterThanEquals>(node, ParseMathAddSub());
+                node = std::make_shared<OpGreaterThanEquals>(node, ParseConcat());
             else if (op == "<=")
-                node = std::make_shared<OpLessThanEquals>(node, ParseMathAddSub());
+                node = std::make_shared<OpLessThanEquals>(node, ParseConcat());
         }
         return node;
     }

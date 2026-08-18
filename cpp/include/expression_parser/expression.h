@@ -163,6 +163,15 @@ protected:
     virtual std::any DoEval(const std::any &leftVal, const std::any &rightVal) const override;
 };
 
+// String concatenation: left .. right. Both operands are coerced to string
+// regardless of type (numbers/booleans are formatted, not added numerically).
+class OpConcat : public BinaryOp {
+public:
+    OpConcat(std::shared_ptr<ExpressionNode> left, std::shared_ptr<ExpressionNode> right);
+protected:
+    virtual std::any DoEval(const std::any &leftVal, const std::any &rightVal) const override;
+};
+
 // ---------------------
 // Ternary Conditional Operator
 // ---------------------

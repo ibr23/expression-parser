@@ -49,6 +49,41 @@ TEST_CASE( "StaticStr") {
     REQUIRE(std::any_cast<bool>(result) == true);
 }
 
+TEST_CASE( "Concat") {
+    Parser parser;
+    Context context;
+
+    // Basic string concatenation.
+    auto expression = parser.Parse("'foo' .. 'bar'");
+    REQUIRE(std::any_cast<std::string>(expression->Evaluate(context)) == "foobar");
+
+    // Non-string operands are coerced to string, not added numerically.
+    expression = parser.Parse("'count: ' .. 5");
+    REQUIRE(std::any_cast<std::string>(expression->Evaluate(context)) == "count: 5");
+
+    expression = parser.Parse("5 .. 6");
+    REQUIRE(std::any_cast<std::string>(expression->Evaluate(context)) == "56");
+
+    // Left-associative chaining: (a .. b) .. c
+    expression = parser.Parse("'a' .. 'b' .. 'c'");
+    REQUIRE(std::any_cast<std::string>(expression->Evaluate(context)) == "abc");
+
+    // Binds tighter than comparisons but looser than +/-.
+    context["name"] = std::string("fred");
+    expression = parser.Parse("'hi ' .. name == 'hi fred'");
+    REQUIRE(std::any_cast<bool>(expression->Evaluate(context)) == true);
+
+    expression = parser.Parse("'total: ' .. 1 + 2");
+    REQUIRE(std::any_cast<std::string>(expression->Evaluate(context)) == "total: 3");
+
+    // Structure dump.
+    expression = parser.Parse("'a' .. 'b'");
+    REQUIRE(expression->DumpStructure() ==
+        "Concat\n"
+        "  String('a')\n"
+        "  String('b')\n");
+}
+
 TEST_CASE( "NumericEquals") {
     Parser parser;
     Context context;

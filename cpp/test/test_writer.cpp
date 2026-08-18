@@ -45,6 +45,22 @@ TEST_CASE( "TernaryWriter") {
     REQUIRE(expression->Write() == "x == 1 ? 'one' : x == 2 ? 'two' : 'other'");
 }
 
+TEST_CASE( "ConcatWriter") {
+    Parser parser;
+
+    auto expression = parser.Parse("'foo'..'bar'");
+    REQUIRE(expression->Write() == "'foo' .. 'bar'");
+
+    // Math binds tighter than concat, so no parens needed round-tripping.
+    expression = parser.Parse("'total: ' .. 1 + 2");
+    REQUIRE(expression->Write() == "'total: ' .. 1 + 2");
+
+    // A lower-precedence expression used as an operand (via explicit parens)
+    // must keep its parens when written back.
+    expression = parser.Parse("(true or false) .. 'x'");
+    REQUIRE(expression->Write() == "(true or false) .. 'x'");
+}
+
 TEST_CASE( "MatchOutputWriter") {
     std::string source = loadTestFile("Writer.txt");
 

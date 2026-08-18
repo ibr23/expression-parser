@@ -27,6 +27,7 @@ namespace ExpressionParser {
         std::shared_ptr<ExpressionNode> ParseTernary();
         std::shared_ptr<ExpressionNode> ParseOr();
         std::shared_ptr<ExpressionNode> ParseAnd();
+        std::shared_ptr<ExpressionNode> ParseConcat();
         std::shared_ptr<ExpressionNode> ParseMathAddSub();
         std::shared_ptr<ExpressionNode> ParseMathMulDiv();
         std::shared_ptr<ExpressionNode> ParseBinaryOp();

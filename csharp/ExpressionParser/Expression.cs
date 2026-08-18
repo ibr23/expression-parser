@@ -372,6 +372,19 @@ namespace ExpressionParser
         }
     }
 
+    // String concatenation: left .. right. Both operands are coerced to string
+    // regardless of type (numbers/booleans are formatted, not added numerically).
+    public class OpConcat : BinaryOp
+    {
+        public OpConcat(ExpressionNode left, ExpressionNode right)
+            : base("Concat", left, "..", right, 65) { }
+
+        protected override object DoEval(object leftVal, object rightVal)
+        {
+            return Utils.MakeString(leftVal) + Utils.MakeString(rightVal);
+        }
+    }
+
     // Ternary conditional operator: condition ? trueExpr : falseExpr
     public class OpTernary : ExpressionNode
     {

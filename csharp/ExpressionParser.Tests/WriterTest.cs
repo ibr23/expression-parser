@@ -34,6 +34,24 @@ public class WriterTest
     }
 
     [Fact]
+    public void ConcatWriter()
+    {
+        var parser = new Parser();
+
+        var expression = parser.Parse("'foo'..'bar'");
+        Assert.Equal("'foo' .. 'bar'", expression.Write());
+
+        // Math binds tighter than concat, so no parens needed round-tripping.
+        expression = parser.Parse("'total: ' .. 1 + 2");
+        Assert.Equal("'total: ' .. 1 + 2", expression.Write());
+
+        // A lower-precedence expression used as an operand (via explicit parens)
+        // must keep its parens when written back.
+        expression = parser.Parse("(true or false) .. 'x'");
+        Assert.Equal("(true or false) .. 'x'", expression.Write());
+    }
+
+    [Fact]
     public void MatchOutput()
     {
         string source = loadTestFile("Writer.txt");

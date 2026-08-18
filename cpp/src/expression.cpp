@@ -58,7 +58,7 @@ std::string MakeString(const std::any &val) {
     if (val.type() == typeid(int))
         return std::to_string(std::any_cast<int>(val));
     if (val.type() == typeid(double))
-        return std::to_string(std::any_cast<double>(val));
+        return FormatNumeric(std::any_cast<double>(val));
     throw std::runtime_error("Type mismatch: Expecting string");
 }
 
@@ -303,6 +303,13 @@ OpLessThanEquals::OpLessThanEquals(std::shared_ptr<ExpressionNode> left, std::sh
 
 std::any OpLessThanEquals::DoEval(const std::any &leftVal, const std::any &rightVal) const {
     return Utils::MakeNumeric(leftVal) <= Utils::MakeNumeric(rightVal);
+}
+
+OpConcat::OpConcat(std::shared_ptr<ExpressionNode> left, std::shared_ptr<ExpressionNode> right)
+    : BinaryOp("Concat", left, "..", right, 65) {}
+
+std::any OpConcat::DoEval(const std::any &leftVal, const std::any &rightVal) const {
+    return Utils::MakeString(leftVal) + Utils::MakeString(rightVal);
 }
 
 // ---------------------
