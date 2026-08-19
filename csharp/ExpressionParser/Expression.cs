@@ -239,7 +239,13 @@ namespace ExpressionParser
 
         public int Specificity{ get {return _specificity;}}
 
+        // Names of all Variable nodes anywhere in this node's subtree (function
+        // names from FunctionCall are not included). Built up bottom-up at
+        // parse time, the same way Specificity is.
+        public IReadOnlyCollection<string> Variables { get { return _variables; } }
+
         protected int _specificity = 0;
+        protected HashSet<string> _variables = new HashSet<string>();
 
         protected ExpressionNode(string name, int precedence)
         {
@@ -266,6 +272,8 @@ namespace ExpressionParser
             Op = op;
             Right = right;
             _specificity = left.Specificity + right.Specificity;
+            _variables = new HashSet<string>(left.Variables);
+            _variables.UnionWith(right.Variables);
         }
 
         public override object Evaluate(Dictionary<string, object> context, List<string>? dumpEval = null)
@@ -510,6 +518,9 @@ namespace ExpressionParser
             _trueExpr = trueExpr;
             _falseExpr = falseExpr;
             _specificity = condition.Specificity + trueExpr.Specificity + falseExpr.Specificity;
+            _variables = new HashSet<string>(condition.Variables);
+            _variables.UnionWith(trueExpr.Variables);
+            _variables.UnionWith(falseExpr.Variables);
         }
 
         public override object Evaluate(Dictionary<string, object> context, List<string>? dumpEval = null)
@@ -565,6 +576,7 @@ namespace ExpressionParser
             Operand = operand;
             Op = op;
             _specificity = operand.Specificity;
+            _variables = new HashSet<string>(operand.Variables);
         }
 
         public override object Evaluate(Dictionary<string, object> context, List<string>? dumpEval = null)
@@ -702,6 +714,7 @@ namespace ExpressionParser
         public Variable(string name) : base("Variable", 100)
         {
             _name = name;
+            _variables.Add(name);
         }
 
         public override object Evaluate(Dictionary<string, object> context, List<string>? dumpEval = null)
@@ -736,6 +749,8 @@ namespace ExpressionParser
         {
             _funcName = funcName;
             _args = args ?? new List<ExpressionNode>();
+            foreach (var arg in _args)
+                _variables.UnionWith(arg.Variables);
         }
 
         public override object Evaluate(Dictionary<string, object> context, List<string>? dumpEval = null)

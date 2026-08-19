@@ -43,6 +43,26 @@ public class ParserTest
     }
 
     [Fact]
+    public void Variables()
+    {
+        var parser = new Parser();
+        var expression = parser.Parse("get_name()=='fred' and counter>0 and (5/5.0!=0 or other)");
+        Assert.Equal(new HashSet<string> { "counter", "other" }, expression.Variables);
+
+        expression = parser.Parse("a > b ? c : d");
+        Assert.Equal(new HashSet<string> { "a", "b", "c", "d" }, expression.Variables);
+
+        expression = parser.Parse("-a and not b");
+        Assert.Equal(new HashSet<string> { "a", "b" }, expression.Variables);
+
+        expression = parser.Parse("sum(a, b, 1)");
+        Assert.Equal(new HashSet<string> { "a", "b" }, expression.Variables);
+
+        expression = parser.Parse("true");
+        Assert.Empty(expression.Variables);
+    }
+
+    [Fact]
     public void DecimalSeparator()
     {
         var parser = new Parser();
