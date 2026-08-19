@@ -63,6 +63,35 @@ public class ParserTest
     }
 
     [Fact]
+    public void DotQualifiedIdentifiers()
+    {
+        var parser = new Parser();
+        var context = new Dictionary<string, object>
+        {
+            { "cmd.field", 5 },
+            { "cmd.sub.field", 2 }
+        };
+
+        // A dotted name is one Variable token, not member access.
+        var expression = parser.Parse("cmd.field > 0");
+        Assert.Equal(new HashSet<string> { "cmd.field" }, expression.Variables);
+        Assert.Equal(true, expression.Evaluate(context));
+
+        // Multiple dots are supported too.
+        expression = parser.Parse("cmd.sub.field");
+        Assert.Equal(new HashSet<string> { "cmd.sub.field" }, expression.Variables);
+        Assert.Equal(2, expression.Evaluate(context));
+
+        // ".." string concatenation still takes priority over dotted names.
+        expression = parser.Parse("cmd..field");
+        Assert.Equal(new HashSet<string> { "cmd", "field" }, expression.Variables);
+
+        // Numeric literals with a single decimal point are unaffected.
+        expression = parser.Parse("3.14 + cmd.field");
+        Assert.Equal(8.14, expression.Evaluate(context));
+    }
+
+    [Fact]
     public void DecimalSeparator()
     {
         var parser = new Parser();

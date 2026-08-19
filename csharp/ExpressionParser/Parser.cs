@@ -26,6 +26,7 @@ namespace ExpressionParser
                 | \?|:                                             # Ternary conditional operator
                 | \.\.                                             # String concatenation operator
                 | \+|\-|\/|\*                                      # Maths operators
+                | [A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+ # Dot-qualified identifiers (e.g. cmd.field)
                 | [A-Za-z_][A-Za-z0-9_]*                           # Identifiers (Variables & Functions)
                 | -?\d+\.\d+(?![A-Za-z_])                          # Floating-point numbers (supports negative)
                 | -?\d+(?![A-Za-z_])                               # Integers (supports negative)
@@ -304,7 +305,7 @@ namespace ExpressionParser
 
         private string? _MatchIdentifier()
         {
-            if (_pos < _tokens.Count && Regex.IsMatch(_tokens[_pos], @"^[A-Za-z_][A-Za-z0-9_]*$"))
+            if (_pos < _tokens.Count && Regex.IsMatch(_tokens[_pos], @"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$"))
             {
                 string token = _tokens[_pos];
                 _pos++;
