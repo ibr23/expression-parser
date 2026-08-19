@@ -4,6 +4,10 @@
 #include <cmath>
 #include <stdexcept>
 #include <algorithm>
+#include <iomanip>
+#include <regex>
+#include <charconv>
+#include <locale>
 
 namespace ExpressionParser {
 
@@ -35,16 +39,15 @@ double MakeNumeric(const std::any &val) {
     if (val.type() == typeid(double))
         return std::any_cast<double>(val);
     if (val.type() == typeid(std::string)) {
+        // Parsing always uses '.' as the decimal point, same as expression
+        // literals -- Writer::DecimalSeparator only affects formatting/display,
+        // not parsing. std::from_chars is locale-independent by spec, so this
+        // can't drift with the host process's global C locale either.
         const std::string &s = std::any_cast<std::string>(val);
-        size_t pos = 0;
         double result = 0.0;
-        try {
-            result = std::stod(s, &pos);
-        } catch (...) {
+        auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), result);
+        if (ec != std::errc() || ptr != s.data() + s.size())
             throw std::runtime_error("Type mismatch: Expecting number but got '" + s + "'");
-        }
-        if (pos != s.size())
-            throw std::runtime_error("Type mismatch: Expecting number but got '" + s +"'");
         return result;
     }
     throw std::runtime_error("Type mismatch: Expecting number");
@@ -99,11 +102,23 @@ std::string FormatBoolean(bool val) {
 }
 
 std::string FormatNumeric(double num) {
-    if (std::fmod(num, 1.0) == 0.0)
-        return std::to_string(static_cast<int>(num));
-    std::ostringstream oss;
-    oss << num;
-    return oss.str();
+    std::string s;
+    if (std::fmod(num, 1.0) == 0.0) {
+        s = std::to_string(static_cast<int>(num));
+    } else {
+        // Imbue the classic locale so this doesn't drift if the host process
+        // has changed the global C++ locale (e.g. via std::locale::global);
+        // the configured decimal separator is applied afterwards instead.
+        std::ostringstream oss;
+        oss.imbue(std::locale::classic());
+        oss << num;
+        s = oss.str();
+    }
+    char sep = Writer::getDecimalSeparator();
+    if (sep != '.') {
+        for (char &c : s) if (c == '.') c = sep;
+    }
+    return s;
 }
 
 std::string FormatString(const std::string &val) {
@@ -133,7 +148,105 @@ std::string FormatValue(const std::any &val) {
     return "";
 }
 
+namespace {
+    // Parses "index[,width][:precision]" from inside a {...} placeholder.
+    struct FormatSpec {
+        int index = 0;
+        bool hasWidth = false;
+        int width = 0;
+        bool hasPrecision = false;
+        int precision = 0;
+    };
+
+    FormatSpec ParseFormatSpec(const std::string &spec) {
+        static const std::regex specRegex(R"(^(\d+)(?:,(-?\d+))?(?::(\d+))?$)");
+        std::smatch m;
+        if (!std::regex_match(spec, m, specRegex))
+            throw std::runtime_error("Invalid format placeholder '{" + spec + "}'.");
+        FormatSpec result;
+        result.index = std::stoi(m[1].str());
+        if (m[2].matched) {
+            result.hasWidth = true;
+            result.width = std::stoi(m[2].str());
+        }
+        if (m[3].matched) {
+            result.hasPrecision = true;
+            result.precision = std::stoi(m[3].str());
+        }
+        return result;
+    }
+
+    std::string PadToWidth(const std::string &str, int width) {
+        int absWidth = std::abs(width);
+        if (static_cast<int>(str.size()) >= absWidth)
+            return str;
+        std::string pad(absWidth - str.size(), ' ');
+        return (width < 0) ? (str + pad) : (pad + str);
+    }
+} // namespace
+
+std::string Format(const std::string &fmtStr, const std::vector<std::any> &args) {
+    std::string result;
+    size_t i = 0;
+    while (i < fmtStr.size()) {
+        char c = fmtStr[i];
+        if (c == '{') {
+            if (i + 1 < fmtStr.size() && fmtStr[i + 1] == '{') {
+                result += '{';
+                i += 2;
+                continue;
+            }
+            size_t end = fmtStr.find('}', i + 1);
+            if (end == std::string::npos)
+                throw std::runtime_error("Unmatched '{' in format string.");
+            FormatSpec parsed = ParseFormatSpec(fmtStr.substr(i + 1, end - i - 1));
+            if (parsed.index < 0 || static_cast<size_t>(parsed.index) >= args.size())
+                throw std::runtime_error("Format index " + std::to_string(parsed.index) + " out of range.");
+            const std::any &val = args[parsed.index];
+            std::string valStr;
+            if (parsed.hasPrecision && (val.type() == typeid(int) || val.type() == typeid(double))) {
+                std::ostringstream oss;
+                oss.imbue(std::locale::classic());
+                oss << std::fixed << std::setprecision(parsed.precision) << MakeNumeric(val);
+                valStr = oss.str();
+                char sep = Writer::getDecimalSeparator();
+                if (sep != '.') {
+                    for (char &ch : valStr) if (ch == '.') ch = sep;
+                }
+            } else {
+                valStr = MakeString(val);
+            }
+            if (parsed.hasWidth)
+                valStr = PadToWidth(valStr, parsed.width);
+            result += valStr;
+            i = end + 1;
+            continue;
+        }
+        if (c == '}') {
+            if (i + 1 < fmtStr.size() && fmtStr[i + 1] == '}') {
+                result += '}';
+                i += 2;
+                continue;
+            }
+            throw std::runtime_error("Unmatched '}' in format string.");
+        }
+        result += c;
+        ++i;
+    }
+    return result;
+}
+
 } // namespace Utils
+
+FunctionWrapper make_format_function_wrapper() {
+    return make_variadic_function_wrapper([](const std::vector<std::any> &args) -> std::any {
+        if (args.empty())
+            throw std::runtime_error("format requires at least a format string argument.");
+        std::string fmtStr = Utils::MakeString(args[0]);
+        std::vector<std::any> rest(args.begin() + 1, args.end());
+        return Utils::Format(fmtStr, rest);
+    });
+}
 
 // ---------------------
 // BinaryOp implementations
@@ -425,7 +538,11 @@ std::string LiteralBoolean::Write() const {
 
 LiteralNumber::LiteralNumber(const std::string &val)
     : ExpressionNode("Number", 100) {
-    value = std::stod(val);
+    // Numeric literals in expression source are always '.'-decimal (fixed by
+    // the tokenizer's grammar, independent of Writer::DecimalSeparator).
+    // std::from_chars is locale-independent, unlike std::stod, so this can't
+    // be thrown off by the host process's global C locale either.
+    std::from_chars(val.data(), val.data() + val.size(), value);
 }
 
 std::any LiteralNumber::Evaluate(const Context &context, std::vector<std::string>* dumpEval) const {
@@ -511,7 +628,7 @@ std::any FunctionCall::Evaluate(const Context &context, std::vector<std::string>
         argValues.push_back(arg->Evaluate(context, dumpEval));
     }
     
-    if (argValues.size() != static_cast<size_t>(wrapper.arity)) {
+    if (wrapper.arity >= 0 && argValues.size() != static_cast<size_t>(wrapper.arity)) {
         std::string formattedArgs;
         for (const auto &val : argValues)
             formattedArgs += Utils::FormatValue(val) + ", ";

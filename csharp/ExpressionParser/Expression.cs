@@ -4,6 +4,8 @@
  */
 
 using System.Reflection;
+using System.Text.RegularExpressions;
+using System.Globalization;
 
 namespace ExpressionParser
 {
@@ -36,7 +38,11 @@ namespace ExpressionParser
                 return d;
             if (val is string s)
             {
-                if (double.TryParse(s, out double dResult))
+                // Parsing always uses '.' as the decimal point, same as
+                // expression literals -- Writer.DecimalSeparator only affects
+                // formatting/display, not parsing. InvariantCulture keeps this
+                // from depending on the current thread's culture either.
+                if (double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out double dResult))
                     return dResult;
             }
             throw new Exception($"Type mismatch: Expecting number but got '{val}'");
@@ -51,7 +57,7 @@ namespace ExpressionParser
             if (val is int i)
                 return i.ToString();
             if (val is double d)
-                return d.ToString();
+                return FormatNumeric(d);
             throw new Exception($"Type mismatch: Expecting string but got '{val}'");
         }
 
@@ -85,10 +91,17 @@ namespace ExpressionParser
 
         public static string FormatNumeric(double num)
         {
-            // If num is whole, show without a decimal point.
+            // Always format with InvariantCulture so this doesn't drift with
+            // the current thread's culture; the configured decimal separator
+            // is applied afterwards instead.
+            string s;
             if (num % 1 == 0)
-                return ((int)num).ToString();
-            return num.ToString();
+                s = ((int)num).ToString(CultureInfo.InvariantCulture);
+            else
+                s = num.ToString(CultureInfo.InvariantCulture);
+
+            char sep = Writer.DecimalSeparator;
+            return sep != '.' ? s.Replace('.', sep) : s;
         }
 
         public static string FormatString(string val)
@@ -118,6 +131,104 @@ namespace ExpressionParser
             if (val is string s)
                 return FormatString(s);
             return "";
+        }
+
+        // fmt-style string formatting. Placeholders look like {index}, {index,width},
+        // {index:precision}, or {index,width:precision}:
+        //   index     - 0-based, selects args[index].
+        //   width     - signed; positive right-aligns (pads left), negative
+        //               left-aligns (pads right), to abs(width) characters.
+        //   precision - decimal places; only applies when the arg is int/double,
+        //               ignored otherwise.
+        // Literal braces are written as {{ and }}. Values are stringified via
+        // MakeString (unquoted), not FormatValue.
+        private static readonly Regex FormatSpecRegex = new Regex(@"^(\d+)(?:,(-?\d+))?(?::(\d+))?$");
+
+        public static string Format(string fmtStr, object[] args)
+        {
+            var result = new System.Text.StringBuilder();
+            int i = 0;
+            while (i < fmtStr.Length)
+            {
+                char c = fmtStr[i];
+                if (c == '{')
+                {
+                    if (i + 1 < fmtStr.Length && fmtStr[i + 1] == '{')
+                    {
+                        result.Append('{');
+                        i += 2;
+                        continue;
+                    }
+                    int end = fmtStr.IndexOf('}', i + 1);
+                    if (end == -1)
+                        throw new Exception("Unmatched '{' in format string.");
+                    string spec = fmtStr.Substring(i + 1, end - i - 1);
+                    Match m = FormatSpecRegex.Match(spec);
+                    if (!m.Success)
+                        throw new Exception($"Invalid format placeholder '{{{spec}}}'.");
+
+                    int index = int.Parse(m.Groups[1].Value);
+                    bool hasWidth = m.Groups[2].Success;
+                    int width = hasWidth ? int.Parse(m.Groups[2].Value) : 0;
+                    bool hasPrecision = m.Groups[3].Success;
+                    int precision = hasPrecision ? int.Parse(m.Groups[3].Value) : 0;
+
+                    if (index < 0 || index >= args.Length)
+                        throw new Exception($"Format index {index} out of range.");
+                    object val = args[index];
+
+                    string valStr;
+                    if (hasPrecision && (val is int || val is double))
+                    {
+                        valStr = MakeNumeric(val).ToString("F" + precision, CultureInfo.InvariantCulture);
+                        char sep = Writer.DecimalSeparator;
+                        if (sep != '.')
+                            valStr = valStr.Replace('.', sep);
+                    }
+                    else
+                        valStr = MakeString(val);
+
+                    if (hasWidth)
+                    {
+                        int absWidth = Math.Abs(width);
+                        if (valStr.Length < absWidth)
+                        {
+                            string pad = new string(' ', absWidth - valStr.Length);
+                            valStr = width < 0 ? valStr + pad : pad + valStr;
+                        }
+                    }
+
+                    result.Append(valStr);
+                    i = end + 1;
+                    continue;
+                }
+                if (c == '}')
+                {
+                    if (i + 1 < fmtStr.Length && fmtStr[i + 1] == '}')
+                    {
+                        result.Append('}');
+                        i += 2;
+                        continue;
+                    }
+                    throw new Exception("Unmatched '}' in format string.");
+                }
+                result.Append(c);
+                i++;
+            }
+            return result.ToString();
+        }
+
+        // Convenience for registering as a context function, e.g.
+        // context["format"] = new Func<object[], object>(Utils.FormatFunction);
+        // Usage: format("{0} is {1:2} years old", name, age)
+        public static object FormatFunction(object[] args)
+        {
+            if (args.Length == 0)
+                throw new Exception("format requires at least a format string argument.");
+            string fmtStr = MakeString(args[0]);
+            object[] rest = new object[args.Length - 1];
+            Array.Copy(args, 1, rest, 0, rest.Length);
+            return Format(fmtStr, rest);
         }
     }
 
@@ -538,7 +649,11 @@ namespace ExpressionParser
         private double _value;
         public LiteralNumber(string value) : base("Number", 100)
         {
-            _value = double.Parse(value);
+            // Numeric literals in expression source are always '.'-decimal
+            // (fixed by the tokenizer's grammar, independent of
+            // Writer.DecimalSeparator). InvariantCulture keeps this from
+            // being thrown off by the current thread's culture either.
+            _value = double.Parse(value, CultureInfo.InvariantCulture);
         }
 
         public override object Evaluate(Dictionary<string, object> context, List<string>? dumpEval = null)
@@ -639,15 +754,27 @@ namespace ExpressionParser
                 argValues.Add(arg.Evaluate(context, dumpEval));
             }
 
-            // Strict arity check using reflection on the delegate's method signature.
+            // A delegate whose sole parameter is object[] is treated as variadic
+            // (e.g. Utils.Format) and skips the fixed-count check below; all
+            // evaluated args are passed through as a single array argument.
             ParameterInfo[] expectedParams = func.Method.GetParameters();
-            if (argValues.Count != expectedParams.Length)
-            {
-                string formattedArgs = string.Join(", ", argValues.Select(v => Utils.FormatValue(v)));
-                throw new Exception($"Function '{_funcName}' does not support the provided arguments ({formattedArgs}).");
-            }
+            bool isVariadic = expectedParams.Length == 1 && expectedParams[0].ParameterType == typeof(object[]);
 
-            object? result = func.DynamicInvoke(argValues.ToArray());
+            object? result;
+            if (isVariadic)
+            {
+                result = func.DynamicInvoke(new object[] { argValues.ToArray() });
+            }
+            else
+            {
+                // Strict arity check using reflection on the delegate's method signature.
+                if (argValues.Count != expectedParams.Length)
+                {
+                    string formattedArgs = string.Join(", ", argValues.Select(v => Utils.FormatValue(v)));
+                    throw new Exception($"Function '{_funcName}' does not support the provided arguments ({formattedArgs}).");
+                }
+                result = func.DynamicInvoke(argValues.ToArray());
+            }
 
             if (!(result is int || result is double || result is bool || result is string))
                 throw new Exception($"Function '{_funcName}' must return bool, string, or numeric.");

@@ -8,6 +8,7 @@
 namespace ExpressionParser {
 
 STRING_FORMAT Writer::_stringFormat = STRING_FORMAT::SINGLEQUOTE;
+char Writer::_decimalSeparator = '.';
 
 STRING_FORMAT Writer::getStringFormat() {
     return _stringFormat;
@@ -15,6 +16,14 @@ STRING_FORMAT Writer::getStringFormat() {
 
 void Writer::setStringFormat(STRING_FORMAT format) {
     _stringFormat = format;
+}
+
+char Writer::getDecimalSeparator() {
+    return _decimalSeparator;
+}
+
+void Writer::setDecimalSeparator(char separator) {
+    _decimalSeparator = separator;
 }
 
 } // namespace ExpressionParser

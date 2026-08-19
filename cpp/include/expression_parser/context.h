@@ -68,6 +68,17 @@ FunctionWrapper make_function_wrapper(F f) {
     return wrapper;
 }
 
+// Wraps a function that takes any number of arguments (e.g. a format-string
+// style function). arity is set to -1, a sentinel FunctionCall::Evaluate
+// recognises to skip the fixed-count check that make_function_wrapper's
+// wrappers get.
+inline FunctionWrapper make_variadic_function_wrapper(std::function<std::any(const std::vector<std::any>&)> f) {
+    FunctionWrapper wrapper;
+    wrapper.func = f;
+    wrapper.arity = -1;
+    return wrapper;
+}
+
 }
 
 #endif // EXPRESSION_H

@@ -20,5 +20,20 @@ namespace ExpressionParser
             get { return _stringFormat; }
             set { _stringFormat = value; }
         }
+
+        // Decimal separator used when formatting numbers to strings (FormatNumeric,
+        // Format()'s precision output). Does NOT affect parsing: numeric literals
+        // in expression source, and numeric strings coming from context values
+        // (MakeNumeric), are always parsed with '.' as the decimal point,
+        // regardless of this setting -- '.' is part of the expression grammar
+        // (as is ',', used for function-argument and format-spec-width
+        // separators), so making parsing culture-variable would be ambiguous.
+        // Default '.'.
+        private static char _decimalSeparator = '.';
+        public static char DecimalSeparator
+        {
+            get { return _decimalSeparator; }
+            set { _decimalSeparator = value; }
+        }
     }
 }

@@ -2,6 +2,7 @@
 // Copyright (c) 2025 Ian Thomas
 
 #include "expression_parser/parser.h"
+#include "expression_parser/writer.h"
 #include "catch_amalgamated.hpp"
 #include "test_utils.h"
 #include <fstream>
@@ -47,6 +48,87 @@ TEST_CASE( "StaticStr") {
     context["fixed_str2"] = "jim";
     std::any result = expression->Evaluate(context);
     REQUIRE(std::any_cast<bool>(result) == true);
+}
+
+TEST_CASE( "DecimalSeparator") {
+    Parser parser;
+    Context context;
+    context["format"] = make_format_function_wrapper();
+
+    Writer::setDecimalSeparator(',');
+
+    // Number literal formatting (Write/DumpStructure) respects the setting.
+    auto expression = parser.Parse("3.5 + 0.5");
+    REQUIRE(expression->Write() == "3,5 + 0,5");
+    REQUIRE(expression->DumpStructure() == "Plus\n  Number(3,5)\n  Number(0,5)\n");
+
+    // format()'s precision output respects it too.
+    expression = parser.Parse("format('{0:2}', 3.14159)");
+    REQUIRE(std::any_cast<std::string>(expression->Evaluate(context)) == "3,14");
+
+    // Parsing (MakeNumeric on context string values, same as expression
+    // literals) always expects '.' regardless of the configured separator --
+    // the setting only affects formatting/display.
+    context["price"] = std::string("3,14");
+    expression = parser.Parse("price > 3");
+    REQUIRE_THROWS(expression->Evaluate(context));
+    context["price"] = std::string("3.14");
+    REQUIRE(std::any_cast<bool>(expression->Evaluate(context)) == true);
+
+    // Expression source syntax itself is grammar-fixed at '.', regardless of
+    // the configured separator -- it still parses and evaluates correctly...
+    expression = parser.Parse("3.14 > 3");
+    REQUIRE(std::any_cast<bool>(expression->Evaluate(context)) == true);
+    // ...and ',' can't be used as a literal decimal point, since it's already
+    // the function-argument / format-width separator token.
+    REQUIRE_THROWS(parser.Parse("3,14"));
+
+    Writer::setDecimalSeparator('.');
+}
+
+TEST_CASE( "Format") {
+    Parser parser;
+    Context context;
+    context["format"] = make_format_function_wrapper();
+    context["name"] = std::string("fred");
+    context["age"] = 7;
+    context["pi"] = 3.14159;
+
+    // Basic positional substitution.
+    auto expression = parser.Parse("format('{0} is {1} years old', name, age)");
+    REQUIRE(std::any_cast<std::string>(expression->Evaluate(context)) == "fred is 7 years old");
+
+    // Repeated / reordered indices.
+    expression = parser.Parse("format('{1} {0} {1}', 'a', 'b')");
+    REQUIRE(std::any_cast<std::string>(expression->Evaluate(context)) == "b a b");
+
+    // Precision, applies only to numeric args.
+    expression = parser.Parse("format('pi={0:2}', pi)");
+    REQUIRE(std::any_cast<std::string>(expression->Evaluate(context)) == "pi=3.14");
+    expression = parser.Parse("format('{0:2}', name)");
+    REQUIRE(std::any_cast<std::string>(expression->Evaluate(context)) == "fred");
+
+    // Width/alignment: positive right-aligns, negative left-aligns.
+    expression = parser.Parse("format('[{0,10}]', name)");
+    REQUIRE(std::any_cast<std::string>(expression->Evaluate(context)) == "[      fred]");
+    expression = parser.Parse("format('[{0,-10}]', name)");
+    REQUIRE(std::any_cast<std::string>(expression->Evaluate(context)) == "[fred      ]");
+
+    // Width does nothing if the value is already at least that long.
+    expression = parser.Parse("format('[{0,2}]', name)");
+    REQUIRE(std::any_cast<std::string>(expression->Evaluate(context)) == "[fred]");
+
+    // Width + precision combined.
+    expression = parser.Parse("format('[{0,10:2}]', pi)");
+    REQUIRE(std::any_cast<std::string>(expression->Evaluate(context)) == "[      3.14]");
+
+    // Escaped literal braces.
+    expression = parser.Parse("format('{{literal}} {0}', name)");
+    REQUIRE(std::any_cast<std::string>(expression->Evaluate(context)) == "{literal} fred");
+
+    // Out-of-range index throws.
+    expression = parser.Parse("format('{1}', name)");
+    REQUIRE_THROWS(expression->Evaluate(context));
 }
 
 TEST_CASE( "Concat") {

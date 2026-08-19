@@ -33,7 +33,23 @@ namespace Utils {
     std::string FormatNumeric(double num);
     std::string FormatString(const std::string &val);
     std::string FormatValue(const std::any &val);
+
+    // fmt-style string formatting. Placeholders look like {index}, {index,width},
+    // {index:precision}, or {index,width:precision}:
+    //   index     - 0-based, selects args[index].
+    //   width     - signed; positive right-aligns (pads left), negative
+    //               left-aligns (pads right), to abs(width) characters.
+    //   precision - decimal places; only applies when the arg is int/double,
+    //               ignored otherwise.
+    // Literal braces are written as {{ and }}. Values are stringified via
+    // MakeString (unquoted), not FormatValue.
+    std::string Format(const std::string &fmtStr, const std::vector<std::any> &args);
 }
+
+// Convenience FunctionWrapper for registering Utils::Format as a context
+// function, e.g. context["format"] = make_format_function_wrapper();
+// Usage: format("{0} is {1:2} years old", name, age)
+FunctionWrapper make_format_function_wrapper();
 
 // ---------------------
 // Base Node
